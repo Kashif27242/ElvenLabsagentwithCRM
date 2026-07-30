@@ -83,5 +83,11 @@
         </div>
     </div>
 
+    <!-- ElevenLabs ConvAI Widget Embed -->
+    @if(env('Agent_ID'))
+        <elevenlabs-convai agent-id="{{ env('Agent_ID') }}"></elevenlabs-convai>
+        <script src="https://unpkg.com/@elevenlabs/convai-widget-embed" async type="text/javascript"></script>
+    @endif
+
 </body>
 </html>

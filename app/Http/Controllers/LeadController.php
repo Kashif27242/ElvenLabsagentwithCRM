@@ -91,72 +91,92 @@ class LeadController extends Controller
 
         $details = $elevenLabsService->getConversationDetails($convId);
 
-        if ($details) {
-            $status = strtolower($details['status'] ?? '');
-            $startTime = $details['metadata']['start_time_unix_secs'] ?? null;
-            $elapsedSeconds = $startTime ? (time() - $startTime) : 0;
+        if (!$details) {
+            $errorReason = 'Conversation record not found on ElevenLabs (created under previous Agent ID or invalid ID).';
+            $lead->update([
+                'call_status' => 'failed',
+                'call_error_reason' => $errorReason
+            ]);
 
-            // Finished statuses in ElevenLabs API
-            $isDone = in_array($status, ['done', 'completed', 'ended', 'finished']);
-            $isFailed = in_array($status, ['failed', 'canceled', 'no_answer', 'busy', 'error']);
+            $callLog = \App\Models\CallLog::where('elevenlabs_conversation_id', $convId)->first();
+            if ($callLog) {
+                $callLog->update([
+                    'call_status' => 'failed',
+                    'call_error_reason' => $errorReason
+                ]);
+            }
+
+            return response()->json([
+                'call_status' => 'failed',
+                'updated' => true,
+                'summary' => $errorReason
+            ]);
+        }
+
+        $status = strtolower($details['status'] ?? '');
+        $startTime = $details['metadata']['start_time_unix_secs'] ?? null;
+        $elapsedSeconds = $startTime ? (time() - $startTime) : 0;
+
+        // Finished statuses in ElevenLabs API
+        $isDone = in_array($status, ['done', 'completed', 'ended', 'finished']);
+        $isFailed = in_array($status, ['failed', 'canceled', 'no_answer', 'busy', 'error']);
+        
+        // Timeout check: If status is still "initiated" or "in_progress" after > 45 seconds with no messages, mark as ended/unanswered
+        $isTimedOut = ($status === 'initiated' || $status === 'in_progress') && ($elapsedSeconds > 45);
+
+        if ($isDone || $isFailed || $isTimedOut) {
+            $finalStatus = ($isFailed || ($isTimedOut && empty($details['transcript']))) ? 'failed' : 'completed';
             
-            // Timeout check: If status is still "initiated" or "in_progress" after > 45 seconds with no messages, mark as ended/unanswered
-            $isTimedOut = ($status === 'initiated' || $status === 'in_progress') && ($elapsedSeconds > 45);
+            $aiSummary = $details['analysis']['transcript_summary'] 
+                ?? $details['analysis']['summary'] 
+                ?? $details['call_summary_title'] 
+                ?? null;
 
-            if ($isDone || $isFailed || $isTimedOut) {
-                $finalStatus = ($isFailed || ($isTimedOut && empty($details['transcript']))) ? 'failed' : 'completed';
-                
-                $aiSummary = $details['analysis']['transcript_summary'] 
-                    ?? $details['analysis']['summary'] 
-                    ?? $details['call_summary_title'] 
-                    ?? null;
-
-                if ($aiSummary) {
-                    $summaryText = is_array($aiSummary) ? json_encode($aiSummary, JSON_PRETTY_PRINT) : $aiSummary;
-                } else {
-                    $transcriptMessages = [];
-                    if (!empty($details['transcript'])) {
-                        foreach ($details['transcript'] as $turn) {
-                            $role = ($turn['role'] ?? 'speaker') === 'agent' ? 'AI Agent' : 'Lead';
-                            $msg = trim($turn['message'] ?? '', '"');
-                            $transcriptMessages[] = "{$role}: {$msg}";
-                        }
+            if ($aiSummary) {
+                $summaryText = is_array($aiSummary) ? json_encode($aiSummary, JSON_PRETTY_PRINT) : $aiSummary;
+            } else {
+                $transcriptMessages = [];
+                if (!empty($details['transcript'])) {
+                    foreach ($details['transcript'] as $turn) {
+                        $role = ($turn['role'] ?? 'speaker') === 'agent' ? 'AI Agent' : 'Lead';
+                        $msg = trim($turn['message'] ?? '', '"');
+                        $transcriptMessages[] = "{$role}: {$msg}";
                     }
-
-                    $summaryText = !empty($transcriptMessages) 
-                        ? implode("\n", $transcriptMessages) 
-                        : ($finalStatus === 'failed' ? 'Call declined, unanswered, or ended by recipient.' : 'Call finished.');
                 }
 
-                $recordingUrl = route('conversations.audio', $convId);
-                $errorReason = ($finalStatus === 'failed') ? ($details['error'] ?? 'Call declined or unanswered by lead.') : null;
+                $summaryText = !empty($transcriptMessages) 
+                    ? implode("\n", $transcriptMessages) 
+                    : ($finalStatus === 'failed' ? 'Call declined, unanswered, or ended by recipient.' : 'Call finished.');
+            }
 
-                // Update Lead
-                $lead->update([
+            $recordingUrl = route('conversations.audio', $convId);
+            $errorReason = ($finalStatus === 'failed') ? ($details['error'] ?? 'Call declined or unanswered by lead.') : null;
+
+            // Update Lead
+            $lead->update([
+                'call_status' => $finalStatus,
+                'call_summary' => $summaryText,
+                'recording_url' => $recordingUrl,
+                'call_error_reason' => $errorReason
+            ]);
+
+            // Update CallLog
+            $callLog = \App\Models\CallLog::where('elevenlabs_conversation_id', $convId)->first();
+            if ($callLog) {
+                $callLog->update([
                     'call_status' => $finalStatus,
                     'call_summary' => $summaryText,
                     'recording_url' => $recordingUrl,
-                    'call_error_reason' => $errorReason
-                ]);
-
-                // Update CallLog
-                $callLog = \App\Models\CallLog::where('elevenlabs_conversation_id', $convId)->first();
-                if ($callLog) {
-                    $callLog->update([
-                        'call_status' => $finalStatus,
-                        'call_summary' => $summaryText,
-                        'recording_url' => $recordingUrl,
-                        'call_error_reason' => $errorReason,
-                        'raw_webhook_payload' => $details
-                    ]);
-                }
-
-                return response()->json([
-                    'call_status' => $finalStatus,
-                    'updated' => true,
-                    'summary' => $summaryText
+                    'call_error_reason' => $errorReason,
+                    'raw_webhook_payload' => $details
                 ]);
             }
+
+            return response()->json([
+                'call_status' => $finalStatus,
+                'updated' => true,
+                'summary' => $summaryText
+            ]);
         }
 
         return response()->json([
