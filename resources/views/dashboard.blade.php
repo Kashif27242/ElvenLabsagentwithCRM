@@ -46,6 +46,27 @@
     </div>
 </div>
 
+<!-- ElevenLabs Agent Live Preview Banner -->
+<div class="card" style="background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); color: #ffffff; border: none; margin-bottom: 2rem;">
+    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1.25rem;">
+        <div style="max-width: 650px;">
+            <div style="display: inline-flex; align-items: center; gap: 0.5rem; background: rgba(99, 102, 241, 0.25); border: 1px solid rgba(165, 180, 252, 0.2); padding: 0.35rem 0.85rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 700; color: #c7d2fe; margin-bottom: 0.75rem;">
+                <span class="status-dot" style="background-color: #34d399;"></span>
+                LIVE CONVAI WIDGET ACTIVE
+            </div>
+            <h3 style="font-size: 1.35rem; font-weight: 800; color: #ffffff; margin-bottom: 0.5rem;">Test Voice Agent Live</h3>
+            <p style="color: #c7d2fe; font-size: 0.925rem; line-height: 1.5; margin: 0;">
+                Experience real-time interactive voice conversation with your configured ElevenLabs Agent right inside the browser. Click the widget icon floating at the bottom right corner of your screen to launch a live test call.
+            </p>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <span style="font-size: 0.85rem; font-weight: 600; color: #a5b4fc; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); padding: 0.6rem 1.1rem; border-radius: 0.6rem; font-family: monospace;">
+                Agent ID: {{ env('Agent_ID', 'Not set') }}
+            </span>
+        </div>
+    </div>
+</div>
+
 <!-- Recent Leads Table -->
 <div class="card">
     <div class="card-header">

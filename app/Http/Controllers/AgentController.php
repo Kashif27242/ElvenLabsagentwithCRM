@@ -35,17 +35,32 @@ class AgentController extends Controller
 
         $payload = [];
 
-        if ($request->has('name')) {
+        if ($request->filled('name')) {
             $payload['name'] = $request->input('name');
         }
 
-        // Build conversation_config payload if prompt or first_message updated
+        // Build conversation_config payload
         $conversationConfig = [];
+
         if ($request->filled('prompt')) {
             $conversationConfig['agent']['prompt']['prompt'] = $request->input('prompt');
         }
         if ($request->filled('first_message')) {
-            $conversationConfig['agent']['first_message'] = $request->input('first_message');
+            $conversationConfig['agent']['first_message'] = trim($request->input('first_message'));
+        }
+        if ($request->filled('llm')) {
+            $conversationConfig['agent']['prompt']['llm'] = $request->input('llm');
+        }
+        if ($request->has('temperature') && $request->input('temperature') !== '') {
+            $conversationConfig['agent']['prompt']['temperature'] = (float) $request->input('temperature');
+        }
+
+        // TTS settings
+        if ($request->filled('voice_id')) {
+            $conversationConfig['tts']['voice_id'] = trim($request->input('voice_id'));
+        }
+        if ($request->filled('tts_model_id')) {
+            $conversationConfig['tts']['model_id'] = trim($request->input('tts_model_id'));
         }
 
         if (!empty($conversationConfig)) {
@@ -55,7 +70,7 @@ class AgentController extends Controller
         $result = $this->elevenLabsService->updateAgentDetails($agentId, $payload);
 
         if ($result) {
-            return redirect()->back()->with('success', 'Agent settings updated successfully in ElevenLabs!');
+            return redirect()->back()->with('success', 'Agent settings & AI Model updated successfully in ElevenLabs!');
         }
 
         return redirect()->back()->with('error', 'Failed to update agent settings. Check logs.');
